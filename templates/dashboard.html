@@ -1,0 +1,193 @@
+{% extends "base.html" %}
+{% set active_page = "dashboard" %}
+{% set title = "Tableau de bord - Mobility Copilot" %}
+
+{% block head_extra %}
+<!-- Leaflet (carte) -->
+<link
+  rel="stylesheet"
+  href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+/>
+<style>
+  #map { height: 460px; border-radius: 14px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row g-4">
+  <div class="col-12">
+    <div class="card shadow-soft">
+      <div class="card-body p-4">
+        <h1 class="h4 mb-1">Mini tableau de bord</h1>
+        <p class="text-muted mb-4">
+          Carte + quelques indicateurs simples (à brancher sur vos agrégats).
+        </p>
+
+        <div class="row g-3 align-items-end mb-3">
+          <div class="col-md-4">
+            <label class="form-label">Début</label>
+            <input id="dashStart" class="form-control" type="date" />
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Fin</label>
+            <input id="dashEnd" class="form-control" type="date" />
+          </div>
+          <div class="col-md-4">
+            <button id="dashRefresh" class="btn btn-dark w-100" type="button">Actualiser</button>
+          </div>
+        </div>
+
+        <div class="row g-3">
+          <div class="col-lg-8">
+            <div id="map" class="shadow-soft"></div>
+          </div>
+          <div class="col-lg-4 d-grid gap-3">
+            <div class="card shadow-soft">
+              <div class="card-body p-3">
+                <div class="small text-muted">Indicateur</div>
+                <div class="h5 mb-0">Collisions (période)</div>
+                <div class="text-muted" id="kpiCollisions">—</div>
+              </div>
+            </div>
+            
+            <div class="card shadow-soft">
+            <div class="card-body p-3">
+                <div class="small text-muted">Indicateur</div>
+                <div class="h5 mb-0">Collisions graves</div>
+                <div class="text-muted" id="kpiGraves">—</div>
+            </div>
+            </div>
+
+            <div class="card shadow-soft">
+            <div class="card-body p-3">
+                <div class="small text-muted">Top rues (collisions)</div>
+                <ol class="mb-0" id="topRues">
+                <li class="text-muted">—</li>
+                </ol>
+            </div>
+            </div>
+
+            <div class="card shadow-soft">
+            <div class="card-body p-3">
+                <div class="small text-muted">Indicateur</div>
+                <div class="h5 mb-0">Requêtes 311 (période)</div>
+                <div class="text-muted" id="kpi311">—</div>
+            </div>
+            </div>
+
+            <div class="card shadow-soft">
+            <div class="card-body p-3">
+                <div class="small text-muted">Top requêtes 311</div>
+                <ol class="mb-0" id="top311">
+                <li class="text-muted">—</li>
+                </ol>
+            </div>
+            </div>
+
+            <div class="card shadow-soft">
+              <div class="card-body p-3">
+                <div class="small text-muted">Corrélation météo ↔ incidents</div>
+                <div class="text-muted" id="meteoHint">—</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+  // Carte centrée sur Montréal (placeholder)
+  const map = L.map('map').setView([45.5019, -73.5674], 11);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 18,
+    attribution: '&copy; OpenStreetMap'
+  }).addTo(map);
+
+  // Points de démo (à remplacer par vos données collisions)
+  const demoPoints = [
+    { lat: 45.5088, lon: -73.5610, label: "Point A" },
+    { lat: 45.4890, lon: -73.5850, label: "Point B" },
+    { lat: 45.5250, lon: -73.6000, label: "Point C" }
+  ];
+
+  let collisionsLayer = L.layerGroup().addTo(map);
+  let req311Layer = L.layerGroup().addTo(map);
+  
+  function renderCollisionMarkers(points) {
+  collisionsLayer.clearLayers();
+  points.forEach(p => {
+    L.circleMarker([p.lat, p.lon], {
+      radius: 6,
+      color: "#2563eb",
+      fillColor: "#3b82f6",
+      fillOpacity: 0.7
+    })
+    .addTo(collisionsLayer)
+    .bindPopup(p.label || "");
+  });
+}
+
+function render311Markers(points) {
+  req311Layer.clearLayers();
+  points.forEach(p => {
+    L.circleMarker([p.lat, p.lon], {
+      radius: 5,
+      color: "#ea580c",
+      fillColor: "#fb923c",
+      fillOpacity: 0.7
+    })
+    .addTo(req311Layer)
+    .bindPopup("311: " + (p.label || ""));
+  });
+}
+
+    
+
+  document.getElementById("dashRefresh").addEventListener("click", async () => {
+  const start = document.getElementById("dashStart").value;
+  const end = document.getElementById("dashEnd").value;
+
+  // 1) Récupérer le summary d'abord
+  const res = await fetch(`/api/dashboard/summary?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`);
+  const data = await res.json();
+
+  // Collisions
+  document.getElementById("kpiCollisions").textContent = `${data.collisions_total ?? "—"}`;
+  document.getElementById("kpiGraves").textContent = `${data.collisions_graves ?? "—"}`;
+
+  const topRuesEl = document.getElementById("topRues");
+  const topRues = data.top_rues || [];
+  topRuesEl.innerHTML = topRues.length
+    ? topRues.map(x => `<li>${x.rue} — ${x.count}</li>`).join("")
+    : `<li class="text-muted">—</li>`;
+
+  // 311
+  document.getElementById("kpi311").textContent = `${data.req311_total ?? "—"}`;
+
+  const top311El = document.getElementById("top311");
+  const top311 = data.top_311 || [];
+  top311El.innerHTML = top311.length
+    ? top311.map(x => `<li>${x.label} — ${x.count}</li>`).join("")
+    : `<li class="text-muted">—</li>`;
+
+  document.getElementById("meteoHint").textContent = "À brancher plus tard (météo + 311).";
+
+  // 2) Points carte
+  // 2) Points collisions
+const resPts = await fetch(`/api/dashboard/map?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`);
+const dataPts = await resPts.json();
+renderCollisionMarkers(dataPts.points || []);
+
+// 3) Points 311
+const res311 = await fetch(`/api/dashboard/map311?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`);
+const data311 = await res311.json();
+render311Markers(data311.points || []);
+});
+</script>
+{% endblock %}

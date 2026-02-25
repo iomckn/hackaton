@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% set active_page = "briefing" %}
+{% set title = "Synthèse - Mobility Copilot" %}
+
+{% block content %}
+<div class="row g-4">
+  <div class="col-12">
+    <div class="card shadow-soft">
+      <div class="card-body p-4">
+        <h1 class="h4 mb-1">Synthèse automatique</h1>
+        <p class="text-muted mb-4">
+          Génère un briefing (Top 5 hotspots, tendances, signaux faibles) sur une période.
+        </p>
+
+        <form id="briefingForm" class="row g-2 align-items-end">
+          <div class="col-md-4">
+            <label class="form-label">Début</label>
+            <input id="startDate" class="form-control" type="date" />
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Fin</label>
+            <input id="endDate" class="form-control" type="date" />
+          </div>
+          <div class="col-md-4">
+            <button class="btn btn-dark w-100" type="submit">Générer</button>
+          </div>
+        </form>
+
+        <hr class="my-4" />
+
+        <div id="briefingOutput" class="d-grid gap-3">
+          <div class="alert alert-secondary mb-0">
+            Synthèse: <span class="text-muted">en attente…</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const formB = document.getElementById("briefingForm");
+  const outB = document.getElementById("briefingOutput");
+
+  function escapeHtml(s) {
+    return s.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  }
+
+  formB.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const start = document.getElementById("startDate").value;
+    const end = document.getElementById("endDate").value;
+
+    outB.innerHTML = `<div class="alert alert-secondary mb-0">Synthèse: <span class="text-muted">…</span></div>`;
+
+    // brancher API:
+    const res = await fetch(`/api/briefing?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`);
+    const data = await res.json();
+
+
+    outB.innerHTML = `
+    <div class="card shadow-soft">
+    <div class="card-body p-3">
+        <div class="fw-semibold mb-2">Top 5 hotspots</div>
+        <ul class="mb-0">
+        ${data.hotspots.map(x => `<li>${escapeHtml(x)}</li>`).join("")}
+        </ul>
+    </div>
+    </div>
+
+    <div class="card shadow-soft">
+    <div class="card-body p-3">
+        <div class="fw-semibold mb-2">Tendance</div>
+        <div>${escapeHtml(data.trend)}</div>
+    </div>
+    </div>
+
+    <div class="card shadow-soft">
+    <div class="card-body p-3">
+        <div class="fw-semibold mb-2">Signal faible</div>
+        <div>${escapeHtml(data.weak_signal)}</div>
+    </div>
+    </div>
+
+    <div class="card shadow-soft">
+    <div class="card-body p-3">
+        <div class="fw-semibold mb-2">Deux tons (mêmes données)</div>
+        <div class="row g-3">
+        <div class="col-md-6">
+            <div class="fw-semibold mb-1">Grand public</div>
+            <div class="prelike">${escapeHtml(data.public_version)}</div>
+        </div>
+        <div class="col-md-6">
+            <div class="fw-semibold mb-1">Municipalité</div>
+            <div class="prelike">${escapeHtml(data.municipal_version)}</div>
+        </div>
+        </div>
+    </div>
+    </div>
+    `;
+  });
+</script>
+{% endblock %}
